@@ -109,3 +109,28 @@ struct PomodoroApp: App {
         }
     }
 }
+
+extension Color {
+    // Dynamic color helper
+    static func dynamicColor(light: UInt32, dark: UInt32) -> Color {
+        return Color(NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let hex = isDark ? dark : light
+            let r = CGFloat((hex >> 16) & 0xFF) / 255.0
+            let g = CGFloat((hex >> 8) & 0xFF) / 255.0
+            let b = CGFloat(hex & 0xFF) / 255.0
+            return NSColor(red: r, green: g, blue: b, alpha: 1.0)
+        })
+    }
+
+    static let themePopoverBackground = dynamicColor(light: 0xF5F7F8, dark: 0x1C1C1E)
+    static let themeSecondarySurface = dynamicColor(light: 0xE9EEF0, dark: 0x2C2C2E)
+    static let themePrimaryText = dynamicColor(light: 0x212B32, dark: 0xF2F2F2)
+    static let themeSecondaryText = dynamicColor(light: 0x4C6272, dark: 0xAEB7BD)
+    static let themeTertiaryText = dynamicColor(light: 0x768692, dark: 0x768692)
+    static let themeBorder = dynamicColor(light: 0xD8DDE0, dark: 0x3A3A3C)
+    static let themeProgressTrack = dynamicColor(light: 0xD8E0E4, dark: 0x3A4145)
+    static let themeAccent = dynamicColor(light: 0x005EB8, dark: 0x4D8AC7)
+    
+    static let themeQuitRed = Color(NSColor(red: 0xFF/255.0, green: 0x3B/255.0, blue: 0x30/255.0, alpha: 1.0))
+}

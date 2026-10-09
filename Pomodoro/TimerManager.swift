@@ -17,7 +17,7 @@ final class TimerManager: ObservableObject {
 
     // MARK: - Published Properties
 
-    @Published var currentSession: SessionType = .timer
+    @Published var currentSession: SessionType = .focus
     @Published var timerState: TimerState = .stopped
     @Published var remainingTime: TimeInterval
     @Published var progress: Double = 0.0
@@ -26,9 +26,42 @@ final class TimerManager: ObservableObject {
             UserDefaults.standard.set(autoStartNextSession, forKey: "autoStartNextSession")
         }
     }
+    
+    @Published var isDarkMode: Bool {
+        didSet {
+            UserDefaults.standard.set(isDarkMode, forKey: "isDarkMode")
+        }
+    }
     @Published var longBreakFrequency: Int {
         didSet {
             UserDefaults.standard.set(longBreakFrequency, forKey: "longBreakFrequency")
+        }
+    }
+    
+    @Published var focusDurationMinutes: Int {
+        didSet {
+            UserDefaults.standard.set(focusDurationMinutes, forKey: "focusDurationMinutes")
+            if currentSession == .focus && timerState == .stopped {
+                remainingTime = duration(for: .focus)
+            }
+        }
+    }
+    
+    @Published var shortBreakDurationMinutes: Int {
+        didSet {
+            UserDefaults.standard.set(shortBreakDurationMinutes, forKey: "shortBreakDurationMinutes")
+            if currentSession == .shortBreak && timerState == .stopped {
+                remainingTime = duration(for: .shortBreak)
+            }
+        }
+    }
+    
+    @Published var longBreakDurationMinutes: Int {
+        didSet {
+            UserDefaults.standard.set(longBreakDurationMinutes, forKey: "longBreakDurationMinutes")
+            if currentSession == .longBreak && timerState == .stopped {
+                remainingTime = duration(for: .longBreak)
+            }
         }
     }
 
@@ -38,7 +71,7 @@ final class TimerManager: ObservableObject {
     private var pausedRemaining: TimeInterval?
     private var displayTimer: Timer?
     private var completionSoundPlayed = false
-    private var completedShortBreaks: Int = 0
+    private var completedFocusSessions: Int = 0
 
     // MARK: - Computed Properties
 
@@ -62,13 +95,34 @@ final class TimerManager: ObservableObject {
 
         let savedFrequency = UserDefaults.standard.object(forKey: "longBreakFrequency") as? Int ?? 4
         self.longBreakFrequency = savedFrequency
+        
+        // Use true as default for dark mode if not explicitly set, or read from UserDefaults
+        if UserDefaults.standard.object(forKey: "isDarkMode") != nil {
+            self.isDarkMode = UserDefaults.standard.bool(forKey: "isDarkMode")
+        } else {
+            self.isDarkMode = true // Default to true or match system
+        }
+        
+        self.focusDurationMinutes = UserDefaults.standard.object(forKey: "focusDurationMinutes") as? Int ?? 25
+        self.shortBreakDurationMinutes = UserDefaults.standard.object(forKey: "shortBreakDurationMinutes") as? Int ?? 5
+        self.longBreakDurationMinutes = UserDefaults.standard.object(forKey: "longBreakDurationMinutes") as? Int ?? 15
 
-        self.remainingTime = SessionType.timer.duration
-
+        self.remainingTime = 0 // Will be set by switchSession or immediately below
+        
         requestNotificationPermission()
+        
+        self.remainingTime = duration(for: .focus)
     }
 
     // MARK: - Public Actions
+    
+    func duration(for session: SessionType) -> TimeInterval {
+        switch session {
+        case .focus: return TimeInterval(focusDurationMinutes * 60)
+        case .shortBreak: return TimeInterval(shortBreakDurationMinutes * 60)
+        case .longBreak: return TimeInterval(longBreakDurationMinutes * 60)
+        }
+    }
 
     /// Start or resume the timer.
     func start() {
@@ -111,7 +165,7 @@ final class TimerManager: ObservableObject {
         stopDisplayTimer()
         endDate = nil
         pausedRemaining = nil
-        remainingTime = currentSession.duration
+        remainingTime = duration(for: currentSession)
         progress = 0.0
         timerState = .stopped
         completionSoundPlayed = false
@@ -122,7 +176,7 @@ final class TimerManager: ObservableObject {
     func switchSession(to session: SessionType) {
         guard timerState == .stopped || timerState == .completed else { return }
         currentSession = session
-        remainingTime = session.duration
+        remainingTime = duration(for: session)
         progress = 0.0
         timerState = .stopped
         completionSoundPlayed = false
@@ -193,7 +247,7 @@ final class TimerManager: ObservableObject {
     }
 
     private func updateProgress() {
-        let total = currentSession.duration
+        let total = duration(for: currentSession)
         guard total > 0 else {
             progress = 0
             return
@@ -213,27 +267,27 @@ final class TimerManager: ObservableObject {
     /// Determines the next session based on the completed session and the short break counter.
     private func nextSession(after completed: SessionType) -> SessionType {
         switch completed {
-        case .timer:
+        case .focus:
             // Check if a long break is due
-            if longBreakFrequency > 0 && completedShortBreaks >= longBreakFrequency {
+            if longBreakFrequency > 0 && completedFocusSessions >= longBreakFrequency {
                 return .longBreak
             }
             return .shortBreak
 
         case .shortBreak:
-            return .timer
+            return .focus
 
         case .longBreak:
-            return .timer
+            return .focus
         }
     }
 
     private func handleCompletion() {
         let completedSession = currentSession
 
-        // Track completed short breaks BEFORE determining next session
-        if completedSession == .shortBreak {
-            completedShortBreaks += 1
+        // Track completed focus sessions BEFORE determining next session
+        if completedSession == .focus {
+            completedFocusSessions += 1
         }
 
         // Determine the next session
@@ -241,7 +295,7 @@ final class TimerManager: ObservableObject {
 
         // Reset counter after a long break is selected as the next session
         if completedSession == .longBreak {
-            completedShortBreaks = 0
+            completedFocusSessions = 0
         }
 
         // Send notification for the transition
@@ -249,7 +303,7 @@ final class TimerManager: ObservableObject {
 
         // Transition to next session
         currentSession = next
-        remainingTime = next.duration
+        remainingTime = duration(for: next)
         progress = 0.0
         completionSoundPlayed = false
 
@@ -272,7 +326,7 @@ final class TimerManager: ObservableObject {
     private func sendTransitionNotification(from completed: SessionType, to next: SessionType) {
         let body: String
         switch next {
-        case .timer:
+        case .focus:
             body = "Time to focus"
         case .shortBreak:
             body = "Time for a short break"

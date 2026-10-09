@@ -1,17 +1,9 @@
 import SwiftUI
 
-/// The main menu bar popover view — compact dark timer UI.
+/// The main menu bar popover view.
 struct MenuBarView: View {
     @ObservedObject var timerManager: TimerManager
     @State private var showingSettings = false
-
-    // MARK: - Colors
-
-    private let bgColor = Color(red: 0.07, green: 0.07, blue: 0.07)
-    private let accentOrange = Color(red: 1.0, green: 0.624, blue: 0.039)  // #FF9F0A
-    private let secondaryGray = Color(red: 0.557, green: 0.557, blue: 0.576) // #8E8E93
-    private let stopRed = Color(red: 0.85, green: 0.18, blue: 0.18)
-    private let stopBgRed = Color(red: 0.25, green: 0.08, blue: 0.08)
 
     var body: some View {
         ZStack {
@@ -23,8 +15,9 @@ struct MenuBarView: View {
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
-        .frame(width: 340, height: 380)
-        .background(bgColor)
+        .frame(width: 320, height: 350)
+        .background(Color.themePopoverBackground)
+        .preferredColorScheme(timerManager.isDarkMode ? .dark : .light)
         .animation(.easeInOut(duration: 0.25), value: showingSettings)
     }
 
@@ -35,7 +28,7 @@ struct MenuBarView: View {
             // Session tabs
             sessionTabs
                 .padding(.top, 20)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 20)
 
             Spacer()
 
@@ -44,19 +37,19 @@ struct MenuBarView: View {
 
             // Session label
             Text(timerManager.currentSession.rawValue)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(secondaryGray)
-                .padding(.top, 8)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(Color.themeSecondaryText)
+                .padding(.top, 12)
 
             Spacer()
 
             // Controls
             controlsSection
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 24)
 
             // Keep Quit directly accessible from the timer popup.
             quitButton
-                .padding(.top, 18)
+                .padding(.top, 20)
                 .padding(.bottom, 20)
         }
     }
@@ -64,14 +57,11 @@ struct MenuBarView: View {
     // MARK: - Session Tabs
 
     private var sessionTabs: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             ForEach(SessionType.allCases) { session in
                 sessionTab(for: session)
             }
         }
-        .padding(3)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func sessionTab(for session: SessionType) -> some View {
@@ -80,31 +70,23 @@ struct MenuBarView: View {
 
         return Button {
             if canSwitch {
-                // Switching sessions should update immediately without animating
-                // the entire timer view.
                 timerManager.switchSession(to: session)
             }
         } label: {
-            Text(session.rawValue)
-                .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
-                .foregroundColor(isSelected ? .white : secondaryGray)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 8)
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(isSelected ? accentOrange.opacity(0.2) : Color.clear)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(isSelected ? accentOrange.opacity(0.5) : Color.clear, lineWidth: 1)
-                )
-                .contentShape(RoundedRectangle(cornerRadius: 6))
+            VStack(spacing: 8) {
+                Text(session.rawValue)
+                    .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                    .foregroundColor(isSelected ? Color.themePrimaryText : Color.themeSecondaryText)
+                    .lineLimit(1)
+                
+                Rectangle()
+                    .fill(isSelected ? Color.themeAccent : Color.clear)
+                    .frame(height: 2)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .frame(maxWidth: .infinity, minHeight: 34)
+        .frame(maxWidth: .infinity)
         .accessibilityLabel(session.rawValue)
         .accessibilityHint(isSelected ? "Currently selected" : (canSwitch ? "Switch to \(session.rawValue)" : "Stop timer first to switch"))
         .opacity(canSwitch || isSelected ? 1.0 : 0.5)
@@ -119,30 +101,29 @@ struct MenuBarView: View {
 
             // Countdown text
             Text(timerManager.formattedTime)
-                .font(.system(size: 56, weight: .light, design: .rounded))
-                .foregroundColor(.white)
+                .font(.system(size: 64, weight: .bold, design: .rounded))
+                .foregroundColor(Color.themePrimaryText)
                 .monospacedDigit()
                 .accessibilityLabel("Time remaining: \(timerManager.formattedTime)")
         }
-        .frame(width: 180, height: 180)
+        .frame(width: 250, height: 110)
     }
 
     private var progressRing: some View {
         ZStack {
-            // Background track
-            RoundedRectangle(cornerRadius: 32)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 3)
-                .frame(width: 180, height: 180)
+            // Layer 1: Grey base track
+            Capsule()
+                .stroke(Color.themeProgressTrack, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .frame(width: 250, height: 110)
 
-            // Progress overlay
-            RoundedRectangle(cornerRadius: 32)
-                .trim(from: 0, to: timerManager.progress)
+            // Layer 2: Blue progress stroke
+            Capsule()
+                .trim(from: 0, to: 1.0 - timerManager.progress)
                 .stroke(
-                    accentOrange,
+                    Color.themeAccent,
                     style: StrokeStyle(lineWidth: 3, lineCap: .round)
                 )
-                .frame(width: 180, height: 180)
-                .rotationEffect(.degrees(-90))
+                .frame(width: 250, height: 110)
                 .animation(.linear(duration: 0.1), value: timerManager.progress)
         }
     }
@@ -150,7 +131,7 @@ struct MenuBarView: View {
     // MARK: - Controls Section
 
     private var controlsSection: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             // Start / Pause button
             startPauseButton
 
@@ -171,24 +152,19 @@ struct MenuBarView: View {
     private var startPauseButton: some View {
         let isRunning = timerManager.timerState == .running
         let label = isRunning ? "Pause" : "Start"
-        let icon = isRunning ? "pause.fill" : "play.fill"
 
         return Button {
             timerManager.toggleStartPause()
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
-                Text(label)
-                    .font(.system(size: 13, weight: .semibold))
-            }
-            .foregroundColor(.black)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .background(
-                Capsule()
-                    .fill(accentOrange)
-            )
+            Text(label)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 10)
+                .background(
+                    Capsule()
+                        .fill(Color.themeAccent)
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -200,19 +176,15 @@ struct MenuBarView: View {
                 timerManager.stop()
             }
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "stop.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                Text("Stop")
-                    .font(.system(size: 13, weight: .semibold))
-            }
-            .foregroundColor(stopRed)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                Capsule()
-                    .fill(stopBgRed)
-            )
+            Text("Stop")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 10)
+                .background(
+                    Capsule()
+                        .fill(Color.themeQuitRed)
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Stop")
@@ -225,10 +197,10 @@ struct MenuBarView: View {
             }
         } label: {
             Image(systemName: "gearshape.fill")
-                .font(.system(size: 14))
-                .foregroundColor(secondaryGray)
-                .frame(width: 32, height: 32)
-                .background(Color.white.opacity(0.06))
+                .font(.system(size: 16))
+                .foregroundColor(Color.themeSecondaryText)
+                .frame(width: 36, height: 36)
+                .background(Color.themeSecondarySurface)
                 .clipShape(Circle())
         }
         .buttonStyle(.plain)
@@ -240,8 +212,8 @@ struct MenuBarView: View {
             NSApp.terminate(nil)
         } label: {
             Text("Quit Pomodoro/B")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(secondaryGray)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(Color.themeQuitRed)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Quit application")

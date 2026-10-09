@@ -24,7 +24,10 @@ struct SettingsView: View {
                         Text("Back")
                             .font(.system(size: 13, weight: .medium))
                     }
-                    .foregroundColor(accentOrange)
+                    .foregroundColor(Color.themeAccent)
+                    .padding(.vertical, 8)
+                    .padding(.trailing, 8)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Back to timer")
@@ -33,7 +36,7 @@ struct SettingsView: View {
 
                 Text("Settings")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(Color.themePrimaryText)
 
                 Spacer()
 
@@ -48,67 +51,119 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 20)
-            .padding(.bottom, 24)
+            .padding(.bottom, 16)
 
-            // Auto-start toggle
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle(isOn: $timerManager.autoStartNextSession) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Auto Start Next Session")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.white)
-
-                        Text("Automatically start the next session")
-                            .font(.system(size: 11))
-                            .foregroundColor(secondaryGray)
+            Divider()
+                .background(Color.themeBorder)
+                .padding(.horizontal, 0)
+                
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    
+                    // Durations
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Timer Durations")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color.themeTertiaryText)
+                            .textCase(.uppercase)
+                            
+                        durationRow(title: "Focus", value: $timerManager.focusDurationMinutes)
+                        durationRow(title: "Short Break", value: $timerManager.shortBreakDurationMinutes)
+                        durationRow(title: "Long Break", value: $timerManager.longBreakDurationMinutes)
                     }
-                }
-                .toggleStyle(.switch)
-                .tint(accentOrange)
-                .accessibilityLabel("Auto Start Next Session")
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(Color.white.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    
+                    Divider()
+                        .background(Color.themeBorder)
+                        
+                    // Auto-start toggle
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Session Automation")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color.themeTertiaryText)
+                            .textCase(.uppercase)
+                            
+                        HStack {
+                            Text("Auto Start Next Session")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(Color.themePrimaryText)
+                                
+                            Spacer()
+                                
+                            Toggle("", isOn: $timerManager.autoStartNextSession)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .tint(Color.themeAccent)
+                                .accessibilityLabel("Auto Start Next Session")
+                        }
+                    }
+                    
+                    Divider()
+                        .background(Color.themeBorder)
+                        
+                    // Theme setting
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Appearance")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color.themeTertiaryText)
+                            .textCase(.uppercase)
+                            
+                        HStack {
+                            Text("Dark Mode")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(Color.themePrimaryText)
+                                
+                            Spacer()
+                                
+                            Toggle("", isOn: $timerManager.isDarkMode)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .tint(Color.themeAccent)
+                                .accessibilityLabel("Dark Mode")
+                        }
 
-            // Long Break Frequency
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Long Break Frequency")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.white)
+                    }
+                    
+                    Divider()
+                        .background(Color.themeBorder)
 
-                        Text("Number of short breaks before a long break. Set to 0 to disable automatic long breaks.")
+                    // Long Break Frequency
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Cycles")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color.themeTertiaryText)
+                            .textCase(.uppercase)
+                            
+                        HStack {
+                            Text("Long Break Frequency")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(Color.themePrimaryText)
+                            
+                            Spacer()
+
+                            Stepper(value: $timerManager.longBreakFrequency, in: 0...10) {
+                                Text("\(timerManager.longBreakFrequency)")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(Color.themePrimaryText)
+                                    .monospacedDigit()
+                                    .frame(minWidth: 20, alignment: .trailing)
+                            }
+                            .accessibilityLabel("Long Break Frequency: \(timerManager.longBreakFrequency)")
+                        }
+                        Text("Number of focus sessions before a long break.")
                             .font(.system(size: 11))
-                            .foregroundColor(secondaryGray)
+                            .foregroundColor(Color.themeSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-
-                    Spacer()
-
-                    Stepper(value: $timerManager.longBreakFrequency, in: 0...10) {
-                        Text("\(timerManager.longBreakFrequency)")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.white)
-                            .monospacedDigit()
-                            .frame(minWidth: 20, alignment: .trailing)
-                    }
-                    .accessibilityLabel("Long Break Frequency: \(timerManager.longBreakFrequency)")
                 }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(Color.white.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
+            
+            Divider()
+                .background(Color.themeBorder)
 
-            Spacer()
-
-            // Quit button
+            // Quit button footer
             HStack {
                 Spacer()
                 Button {
@@ -116,15 +171,34 @@ struct SettingsView: View {
                 } label: {
                     Text("Quit Pomodoro/B")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(secondaryGray)
+                        .foregroundColor(Color.themeQuitRed)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Quit application")
                 Spacer()
             }
-            .padding(.bottom, 20)
+            .padding(.vertical, 16)
+            .background(Color.themePopoverBackground)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(bgColor)
+        .background(Color.themePopoverBackground)
+    }
+    
+    private func durationRow(title: String, value: Binding<Int>) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(Color.themePrimaryText)
+            
+            Spacer()
+
+            Stepper(value: value, in: 1...120) {
+                Text("\(value.wrappedValue) min")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color.themePrimaryText)
+                    .monospacedDigit()
+                    .frame(minWidth: 45, alignment: .trailing)
+            }
+        }
     }
 }
