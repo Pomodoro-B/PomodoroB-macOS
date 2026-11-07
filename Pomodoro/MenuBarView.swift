@@ -1,24 +1,72 @@
 import SwiftUI
 
+// MARK: - Isolated Timer Display
+// This tiny view only subscribes to formattedTime, so only it re-renders each tick.
+private struct TimerTextView: View {
+    @ObservedObject var timerManager: TimerManager
+
+    var body: some View {
+        Text(timerManager.formattedTime)
+            .font(.system(size: 64, weight: .bold, design: .rounded))
+            .foregroundColor(Color.themePrimaryText)
+            .monospacedDigit()
+            .contentTransition(.numericText(countsDown: true))
+            .animation(.linear(duration: 0.15), value: timerManager.formattedTime)
+            .accessibilityLabel("Time remaining: \(timerManager.formattedTime)")
+    }
+}
+
+// MARK: - Isolated Progress Ring
+// Subscribes only to progress; re-renders independently of timer text.
+private struct ProgressRingView: View {
+    @ObservedObject var timerManager: TimerManager
+
+    var body: some View {
+        ZStack {
+            // Layer 1: Grey base track
+            Capsule()
+                .stroke(Color.themeProgressTrack, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .frame(width: 250, height: 110)
+
+            // Layer 2: Blue progress stroke
+            Capsule()
+                .trim(from: 0, to: 1.0 - timerManager.progress)
+                .stroke(
+                    Color.themeAccent,
+                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                )
+                .frame(width: 250, height: 110)
+                .animation(.linear(duration: 0.15), value: timerManager.progress)
+        }
+    }
+}
+
 /// The main menu bar popover view.
 struct MenuBarView: View {
     @ObservedObject var timerManager: TimerManager
     @State private var showingSettings = false
+    @Namespace private var tabNamespace
 
     var body: some View {
         ZStack {
             if showingSettings {
                 SettingsView(timerManager: timerManager, showingSettings: $showingSettings)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .trailing).combined(with: .opacity)
+                    ))
             } else {
                 mainTimerView
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .leading).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
             }
         }
         .frame(width: 320, height: 350)
         .background(Color.themePopoverBackground)
         .preferredColorScheme(timerManager.isDarkMode ? .dark : .light)
-        .animation(.easeInOut(duration: 0.25), value: showingSettings)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showingSettings)
     }
 
     // MARK: - Main Timer View
@@ -35,11 +83,12 @@ struct MenuBarView: View {
             // Countdown with progress ring
             countdownSection
 
-            // Session label
+            // Session label — animates when session changes
             Text(timerManager.currentSession.rawValue)
                 .font(.system(size: 14, weight: .regular))
                 .foregroundColor(Color.themeSecondaryText)
                 .padding(.top, 12)
+                .animation(.easeInOut(duration: 0.2), value: timerManager.currentSession)
 
             Spacer()
 
@@ -70,7 +119,9 @@ struct MenuBarView: View {
 
         return Button {
             if canSwitch {
-                timerManager.switchSession(to: session)
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                    timerManager.switchSession(to: session)
+                }
             }
         } label: {
             VStack(spacing: 8) {
@@ -78,10 +129,21 @@ struct MenuBarView: View {
                     .font(.system(size: 12, weight: isSelected ? .bold : .medium))
                     .foregroundColor(isSelected ? Color.themePrimaryText : Color.themeSecondaryText)
                     .lineLimit(1)
-                
-                Rectangle()
-                    .fill(isSelected ? Color.themeAccent : Color.clear)
-                    .frame(height: 2)
+                    .animation(.easeInOut(duration: 0.2), value: isSelected)
+
+                // matchedGeometryEffect makes the accent bar slide between tabs
+                ZStack {
+                    if isSelected {
+                        Rectangle()
+                            .fill(Color.themeAccent)
+                            .frame(height: 2)
+                            .matchedGeometryEffect(id: "tabUnderline", in: tabNamespace)
+                    } else {
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(height: 2)
+                    }
+                }
             }
             .contentShape(Rectangle())
         }
@@ -96,36 +158,13 @@ struct MenuBarView: View {
 
     private var countdownSection: some View {
         ZStack {
-            // Progress ring
-            progressRing
+            // Isolated progress ring — only re-renders when progress changes
+            ProgressRingView(timerManager: timerManager)
 
-            // Countdown text
-            Text(timerManager.formattedTime)
-                .font(.system(size: 64, weight: .bold, design: .rounded))
-                .foregroundColor(Color.themePrimaryText)
-                .monospacedDigit()
-                .accessibilityLabel("Time remaining: \(timerManager.formattedTime)")
+            // Isolated timer text — only re-renders when formatted time changes
+            TimerTextView(timerManager: timerManager)
         }
         .frame(width: 250, height: 110)
-    }
-
-    private var progressRing: some View {
-        ZStack {
-            // Layer 1: Grey base track
-            Capsule()
-                .stroke(Color.themeProgressTrack, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .frame(width: 250, height: 110)
-
-            // Layer 2: Blue progress stroke
-            Capsule()
-                .trim(from: 0, to: 1.0 - timerManager.progress)
-                .stroke(
-                    Color.themeAccent,
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                )
-                .frame(width: 250, height: 110)
-                .animation(.linear(duration: 0.1), value: timerManager.progress)
-        }
     }
 
     // MARK: - Controls Section
@@ -138,7 +177,7 @@ struct MenuBarView: View {
             // Stop button (only visible when timer is active)
             if timerManager.timerState != .stopped {
                 stopButton
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(.scale(scale: 0.8).combined(with: .opacity))
             }
 
             Spacer()
@@ -146,7 +185,7 @@ struct MenuBarView: View {
             // Settings button
             settingsButton
         }
-        .animation(.easeInOut(duration: 0.2), value: timerManager.timerState)
+        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: timerManager.timerState)
     }
 
     private var startPauseButton: some View {
@@ -154,7 +193,9 @@ struct MenuBarView: View {
         let label = isRunning ? "Pause" : "Start"
 
         return Button {
-            timerManager.toggleStartPause()
+            withAnimation(.easeInOut(duration: 0.15)) {
+                timerManager.toggleStartPause()
+            }
         } label: {
             Text(label)
                 .font(.system(size: 13, weight: .bold))
@@ -165,14 +206,16 @@ struct MenuBarView: View {
                     Capsule()
                         .fill(Color.themeAccent)
                 )
+                .contentTransition(.interpolate)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+        .animation(.easeInOut(duration: 0.15), value: isRunning)
     }
 
     private var stopButton: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                 timerManager.stop()
             }
         } label: {
@@ -192,9 +235,7 @@ struct MenuBarView: View {
 
     private var settingsButton: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.25)) {
-                showingSettings = true
-            }
+            showingSettings = true
         } label: {
             Image(systemName: "gearshape.fill")
                 .font(.system(size: 16))

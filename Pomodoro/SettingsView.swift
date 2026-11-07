@@ -96,6 +96,26 @@ struct SettingsView: View {
                                 .tint(Color.themeAccent)
                                 .accessibilityLabel("Auto Start Next Session")
                         }
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Open Popup on Launch")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(Color.themePrimaryText)
+                                Text("Automatically open the timer when the app starts.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color.themeSecondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            Spacer()
+
+                            Toggle("", isOn: $timerManager.openOnLaunch)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .tint(Color.themeAccent)
+                                .accessibilityLabel("Open Popup on Launch")
+                        }
                     }
                     
                     Divider()

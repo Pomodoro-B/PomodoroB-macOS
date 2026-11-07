@@ -1,7 +1,7 @@
 import Foundation
 import AppKit
 import Combine
-import UserNotifications
+@preconcurrency import UserNotifications
 
 /// Represents the four possible timer states.
 enum TimerState {
@@ -24,6 +24,11 @@ final class TimerManager: ObservableObject {
     @Published var autoStartNextSession: Bool {
         didSet {
             UserDefaults.standard.set(autoStartNextSession, forKey: "autoStartNextSession")
+        }
+    }
+    @Published var openOnLaunch: Bool {
+        didSet {
+            UserDefaults.standard.set(openOnLaunch, forKey: "openOnLaunch")
         }
     }
     
@@ -92,6 +97,8 @@ final class TimerManager: ObservableObject {
     init() {
         let savedAutoStart = UserDefaults.standard.bool(forKey: "autoStartNextSession")
         self.autoStartNextSession = savedAutoStart
+        let savedOpenOnLaunch = UserDefaults.standard.bool(forKey: "openOnLaunch")
+        self.openOnLaunch = savedOpenOnLaunch
 
         let savedFrequency = UserDefaults.standard.object(forKey: "longBreakFrequency") as? Int ?? 4
         self.longBreakFrequency = savedFrequency
@@ -108,8 +115,6 @@ final class TimerManager: ObservableObject {
         self.longBreakDurationMinutes = UserDefaults.standard.object(forKey: "longBreakDurationMinutes") as? Int ?? 15
 
         self.remainingTime = 0 // Will be set by switchSession or immediately below
-        
-        requestNotificationPermission()
         
         self.remainingTime = duration(for: .focus)
     }
@@ -316,34 +321,81 @@ final class TimerManager: ObservableObject {
 
     // MARK: - Notifications
 
-    private func requestNotificationPermission() {
+    /// Requests notification authorization, then verifies the granted status.
+    /// Called once at init. If the user previously denied permission, we skip silently.
+    func requestNotificationPermission() {
         let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in
-            // Permission result handled gracefully — timer works regardless
+
+        // First check current status to avoid redundant prompts
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                // First launch — present the system permission prompt.
+                // Must include .alert + .sound + .badge for the banner to appear on macOS.
+                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                    if let error {
+                        // Log but don't crash — timer still functions without notifications.
+                        print("[PomodoroB] Notification auth error: \(error.localizedDescription)")
+                    }
+                    // No action needed: future calls to add(request:) will silently no-op if denied.
+                }
+            case .denied:
+                // User explicitly denied. Surface a one-time console note; no UI prompt allowed.
+                print("[PomodoroB] Notifications denied by user. Enable them in System Settings › Notifications › Pomodoro/B.")
+            case .authorized, .provisional, .ephemeral:
+                // Already granted — nothing to do.
+                break
+            @unknown default:
+                break
+            }
         }
     }
 
+    /// Sends a banner notification for a session transition.
+    /// All properties are set explicitly so macOS never silently drops the delivery.
     private func sendTransitionNotification(from completed: SessionType, to next: SessionType) {
+        // Build a human-readable title and body describing what just ended and what begins.
+        let title: String
         let body: String
+        switch completed {
+        case .focus:
+            title = "Focus session complete! 🎉"
+        case .shortBreak:
+            title = "Short break over"
+        case .longBreak:
+            title = "Long break over"
+        }
         switch next {
         case .focus:
-            body = "Time to focus"
+            body = "Time to focus. Let's get to work."
         case .shortBreak:
-            body = "Time for a short break"
+            body = "Time for a short break. Rest up!"
         case .longBreak:
-            body = "Time for a long break"
+            body = "Time for a long break. Well deserved!"
         }
 
         let content = UNMutableNotificationContent()
-        content.title = "Pomodoro/B"
+        content.title = title
         content.body = body
+        // sound must be set explicitly — a nil sound means macOS delivers a silent banner
+        content.sound = .default
+        // interruptionLevel .timeSensitive bypasses Focus Mode filters and surfaces immediately
+        content.interruptionLevel = .timeSensitive
+
+        // Use a stable per-session identifier so a rapid double-completion doesn't stack.
+        // The UUID suffix keeps it unique across multiple completions of the same session type.
+        let identifier = "pomodorob.transition.\(next.rawValue).\(UUID().uuidString)"
 
         let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
+            identifier: identifier,
             content: content,
-            trigger: nil  // Deliver immediately
+            trigger: nil  // nil trigger = deliver immediately
         )
 
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[PomodoroB] Failed to deliver notification: \(error.localizedDescription)")
+            }
+        }
     }
 }

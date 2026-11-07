@@ -7,7 +7,10 @@ import UserNotifications
 /// This runs after NSApplication is fully initialized, avoiding the nil crash.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
-    let timerManager = TimerManager()
+    // `lazy` ensures TimerManager is created after applicationDidFinishLaunching sets the
+    // UNUserNotificationCenter delegate. This guarantees the delegate is in place before
+    // requestNotificationPermission() fires inside TimerManager.init().
+    lazy var timerManager = TimerManager()
 
     private let statusItemWidth: CGFloat = 72
     private var statusItem: NSStatusItem?
@@ -17,19 +20,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+
+        // ⚠️ CRITICAL: Set the delegate BEFORE anything posts a notification.
+        // TimerManager.init() calls requestNotificationPermission() synchronously,
+        // so the delegate must be assigned first so the system can route future
+        // willPresent callbacks correctly.
         UNUserNotificationCenter.current().delegate = self
+
+        // Clear any stale badge/notifications from a previous session
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        NSApp.dockTile.badgeLabel = nil
+
         configureStatusItem()
+
+        // Explicitly re-verify permission now that the delegate is set.
+        // The lazy timerManager init may have already called this, but calling
+        // it again is cheap and idempotent — the system shows the prompt only once.
+        timerManager.requestNotificationPermission()
+
+        // Auto-open popover on launch if the user has enabled this setting
+        if timerManager.openOnLaunch {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.openPopover()
+            }
+        }
     }
 
     // MARK: - UNUserNotificationCenterDelegate
 
-    /// Present notification banners even when the app is the active application.
+    /// Called when a notification is about to be presented while the app is in the foreground.
+    /// Menu bar apps are considered "foreground" at all times, so without this delegate method
+    /// macOS would swallow every notification silently. We must explicitly opt in to display.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .sound])
+        // .banner  — the slide-in alert
+        // .sound   — the audible chime
+        // .badge   — dock/status badge (no dock icon for this app, but harmless)
+        // .list    — appears in Notification Center history
+        completionHandler([.banner, .sound, .badge, .list])
+    }
+
+    /// Called when the user taps/clicks a delivered notification.
+    /// Open the popover so the user can see the current timer state.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        Task { @MainActor in
+            self.openPopover()
+        }
+        completionHandler()
     }
 
     private func configureStatusItem() {
@@ -42,16 +86,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         button.action = #selector(handleStatusItemClick(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
+        // Enable native NSPopover animation
+        popover.animates = true
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(
             rootView: MenuBarView(timerManager: timerManager)
         )
+        // Set a fixed content size to prevent layout thrash during animation
+        popover.contentSize = NSSize(width: 320, height: 350)
 
         statusItem = item
         updateStatusItemTitle(for: timerManager.remainingTime)
         remainingTimeObserver = timerManager.$remainingTime.sink { [weak self] remainingTime in
             self?.updateStatusItemTitle(for: remainingTime)
         }
+    }
+
+    private func openPopover() {
+        guard let button = statusItem?.button, !popover.isShown else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
     @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
@@ -71,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         if popover.isShown {
             popover.performClose(nil)
         } else {
-            popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+            openPopover()
         }
     }
 
